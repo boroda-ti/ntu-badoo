@@ -1,2 +1,3 @@
-/venv
+/.venv
+/__pycahce__
 /config.py
