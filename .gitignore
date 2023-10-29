@@ -1,3 +1,4 @@
-/.venv
-/__pycahce__
+/.env
+**/__pycahce__
+**/versions
 /config.py
