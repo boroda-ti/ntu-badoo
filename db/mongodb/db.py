@@ -7,3 +7,6 @@ from config import MONGO_URL
 
 client = pymongo.MongoClient(MONGO_URL)
 db = client.ntu_badoo.profiles
+
+def send_mongodb(data):
+    db.insert_one(data)
