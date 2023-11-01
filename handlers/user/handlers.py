@@ -35,7 +35,7 @@ class Form(StatesGroup):
 
 class EditForm(StatesGroup):
     method = State()
-    data = State()
+    field = State()
 
 class SearchForm(StatesGroup):
     method = State()
@@ -54,21 +54,21 @@ reg_router.message.middleware(Register_Check())
 async def start_handler(msg: Message):
     await msg.answer('Вітаємо тебе в чат-боті для знайомств! Бажаєш знайти однодумців, чи, можливо, просто спілкування? Хутчіш створюй анкету та починай пошук!', reply_markup=create_keyboard())
 
-@router.message(lambda msg: msg.text.lower() == 'подивитися свою анкету')
+@router.message(lambda msg: msg.text == 'Подивитися свою анкету')
 async def profile_handler(msg: Message):
     data = get_form(msg.from_user.id)
     minio_client = create_connection()
     get_photo(minio_client, f'media/temp/{data["user_id"]}.jpg', f'{data["user_id"]}.jpg')
 
     tags = ' '.join(tag for tag in data['tags'])
-    text = f'{data["username"]} {data["age"]} років\n{data["about"]}\nМої теги: {tags}\n{data["sex"]}'
+    text = f'<a href="{data["user_link"]}">{data["username"]}</a> {data["age"]} років\n{data["about"]}\n\nМої теги: {tags}\n\n{data["sex"]}'
     await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{data["user_id"]}.jpg'), caption=text, reply_markup=profile_keyboard())
 
     os.remove(f'media/temp/{data["user_id"]}.jpg')
 
-@router.message(lambda msg: msg.text.lower() in ["редагувати ім'я", "редагувати вік", "редагувати стать", "редагувати біографію", "редагувати теги"])
+@router.message(lambda msg: msg.text in ["Редагувати ім'я", "Редагувати вік", "Редагувати стать", "Редагувати біографію", "Редагувати теги", "Редагувати фото"])
 async def choose_method_edit_handler(msg: Message, state: FSMContext):
-    await state.set_state(EditForm)
+    await state.set_state(EditForm.method)
     await state.update_data(method=msg.text.lower())
     match msg.text.lower():
         case "редагувати ім'я":
@@ -82,11 +82,97 @@ async def choose_method_edit_handler(msg: Message, state: FSMContext):
         case "редагувати теги":
             await msg.answer(f"Список тегів: {STRING_TAGS}.")
             await msg.answer("Вибери теги - це твої захоплення. Формат відправки теги з списку через пробіл: 'ігри фільми готувати', або напиши пусто, якщо бажаєш залишити поле тегів пустим.", reply_markup=delete_keyboard())
+        case "редагувати фото":
+            await msg.answer("Надішли мені фото для своєї анкети", reply_markup=delete_keyboard())
 
-    await state.set_state(EditForm.data)
+    await state.set_state(EditForm.field)
 
+@router.message(EditForm.field)
+async def edit_data_handler(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    method = data['method']
+    update_field = 'user_id'
+    update_data = f'{msg.from_user.id}'
 
-@router.message(lambda msg: msg.text.lower() in ['розпочати реєстрацію', 'створити заново'])
+    match method:
+        case "редагувати ім'я":
+            update_field = 'username'
+            await state.update_data(field=msg.text)
+            update_data = msg.text
+            await msg.answer("Ім'я було успішно зміненно", reply_markup=main())
+        case "редагувати вік":
+            update_field = 'age'
+            try:
+                if int(msg.text) < 16 or int(msg.text) > 50:
+                    await msg.answer("Твій вік повинен бути від 16 до 50")
+                    await msg.answer("Введи свій вік знову")
+                    return
+            except (TypeError, ValueError):
+                await msg.answer("Введи вік числом")
+                await msg.answer("Введи свій вік знову")
+                return
+
+            await state.update_data(field=int(msg.text))
+            update_data = int(msg.text)
+            await msg.answer("Вік було успішно зміненно", reply_markup=main())
+        case "редагувати стать":
+            update_field = 'sex'
+            if msg.text not in ['Чоловік', 'Жінка', 'Інше']:
+                await msg.answer("Ви ввели невірну стать, виберіть з запропонованих")
+                await msg.answer("Обери свою стать", reply_markup=create_sex_keyboard())
+                return
+
+            await state.update_data(field=msg.text)
+            update_data = msg.text
+            await msg.answer("Стать було успішно зміненно", reply_markup=main())
+        case "редагувати біографію":
+            update_field = 'about'
+            if msg.text.lower() == 'пусто':
+                await state.update_data(field='')
+                update_data = ''
+            else:
+                await state.update_data(field=msg.text)
+                update_data = msg.text
+            await msg.answer("Біографію було успішно зміненно", reply_markup=main())
+        case "редагувати теги":
+            update_field = 'tags'
+            if msg.text.lower() == 'пусто':
+                await state.update_data(field=[])
+                update_data = []
+            else:
+                tags = msg.text.lower().split(' ')
+                valid_tags = [tag for tag in tags if tag in AVAILABLE_TAGS]
+                await state.update_data(field=valid_tags)
+                update_data = valid_tags
+            await msg.answer("Теги було успішно зміненно", reply_markup=main())
+        case "редагувати фото":
+            update_field = 'img_name'
+            if msg.content_type != ContentType.PHOTO:
+                await msg.answer("Щось не зрозуміле... Надішліть фото для вашої анкети.")
+                return
+            
+            minio_client = create_connection()
+
+            img = await bot.get_file(msg.photo[-1].file_id)
+            img_path = img.file_path
+
+            delete_photo(minio_client, f'{msg.from_user.id}.jpg')
+            await bot.download_file(img_path, f'media/temp/{msg.from_user.id}.jpg')
+            send_photo(minio_client, f'media/temp/{msg.from_user.id}.jpg', f'{msg.from_user.id}.jpg')
+            os.remove(f'media/temp/{msg.from_user.id}.jpg')
+        
+            await msg.answer('Фото анкети успішно зміненно', reply_markup=main())
+            await state.update_data(field=f'{msg.from_user.id}.jpg')
+            update_data = f'{msg.from_user.id}.jpg'
+
+    print(update_data)
+    print(update_field)
+    update_form(msg.from_user.id, {update_field: update_data})
+    await state.clear()
+
+    
+
+@router.message(lambda msg: msg.text in ['Розпочати реєстрацію', 'Створити заново'])
 async def start_reg_handler(msg: Message, state: FSMContext):
     await msg.answer("Щоб припинити заповнення анкети просто напиши відхилити або /cancel")
     await msg.answer("Введи своє ім'я", reply_markup=delete_keyboard())
@@ -154,7 +240,7 @@ async def process_img_name(msg: Message, state: FSMContext):
         await msg.answer("Щось не зрозуміле... Надішліть фото для вашої анкети.")
         return
     
-    await state.update_data(img_name=f'{msg.from_user.id}.png')  
+    await state.update_data(img_name=f'{msg.from_user.id}.jpg')  
     data = await state.get_data()
 
     result = {
@@ -164,7 +250,8 @@ async def process_img_name(msg: Message, state: FSMContext):
         'about' : data['about'], 
         'tags' : data['tags'], 
         'img_name' : data['img_name'],
-        'user_id': f'{msg.from_user.id}'
+        'user_id': f'{msg.from_user.id}',
+        'user_link': msg.from_user.url
     }
 
     if form_exists(result['user_id']):
@@ -185,7 +272,7 @@ async def process_img_name(msg: Message, state: FSMContext):
 
     await state.clear()
 
-@router.message(lambda msg: msg.text.lower() in ['змінити анкету', 'відхилити зміни'])
+@router.message(lambda msg: msg.text in ['Змінити анкету', 'Відхилити зміни'])
 async def process_change(msg: Message, state: FSMContext):
     if msg.text.lower() == 'змінити анкету':
         data = await state.get_data()
@@ -199,7 +286,7 @@ async def process_change(msg: Message, state: FSMContext):
         return
 
 @router.message(Command('cancel'))
-@router.message(F.text.lower() == "відхилити")
+@router.message(F.text == "Відхилити")
 async def cmd_cancel(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer(text="Створення анкети відхилено", reply_markup=main())
@@ -207,7 +294,7 @@ async def cmd_cancel(msg: Message, state: FSMContext):
 
 
 @router.message(Command('search'))
-@router.message(lambda msg: msg.text.lower() in ['почати пошук', 'пошук'])
+@router.message(lambda msg: msg.text in ['Почати пошук', 'Пошук'])
 async def process_search(msg: Message, state: FSMContext):
     data = get_all_forms(f'{msg.from_user.id}')
     await state.set_state(SearchByTagForm) # new
@@ -227,8 +314,8 @@ async def process_search(msg: Message, state: FSMContext):
     get_photo(minio_client, f'media/temp/{form["user_id"]}.jpg', f'{form["user_id"]}.jpg')
 
     tags = ' '.join(tag for tag in form['tags'])
-    text = f'{form["username"]} {form["age"]} років\n{form["about"]}\nМої теги: {tags}\n{form["sex"]}'
-    await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard())
+    text = f'<a href="{form["user_link"]}">{form["username"]}</a> {form["age"]} років\n{form["about"]}\n\nМої теги: {tags}\n\n{form["sex"]}'
+    await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard(), parse_mode=ParseMode.HTML)
 
     os.remove(f'media/temp/{form["user_id"]}.jpg')
 
@@ -263,8 +350,8 @@ async def process_next_or_cancel_search(msg: Message, state: FSMContext):
         get_photo(minio_client, f'media/temp/{form["user_id"]}.jpg', f'{form["user_id"]}.jpg')
 
         tags = ' '.join(tag for tag in form['tags'])
-        text = f'{form["username"]} {form["age"]} років\n{form["about"]}\nМої теги: {tags}\n{form["sex"]}'
-        await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard())
+        text = f'<a href="{form["user_link"]}">{form["username"]}</a> {form["age"]} років\n{form["about"]}\n\nМої теги: {tags}\n\n{form["sex"]}'
+        await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard(), parse_mode=ParseMode.HTML)
 
         os.remove(f'media/temp/{form["user_id"]}.jpg')
     else:
@@ -277,7 +364,7 @@ async def process_next_or_cancel_search(msg: Message, state: FSMContext):
 
 
 @router.message(Command('search_by_tag'))
-@router.message(lambda msg: msg.text.lower() in ['почати пошук за тегами', 'пошук за тегами'])
+@router.message(lambda msg: msg.text in ['Почати пошук за тегами', 'Пошук за тегами'])
 async def process_search_by_tag(msg: Message, state: FSMContext):
     data = get_forms_by_tags(f'{msg.from_user.id}')
     await state.set_state(SearchByTagForm) # new
@@ -297,8 +384,8 @@ async def process_search_by_tag(msg: Message, state: FSMContext):
     get_photo(minio_client, f'media/temp/{form["user_id"]}.jpg', f'{form["user_id"]}.jpg')
 
     tags = ' '.join(tag for tag in form['tags'])
-    text = f'{form["username"]} {form["age"]} років\n{form["about"]}\nМої теги: {tags}\n{form["sex"]}'
-    await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard())
+    text = f'<a href="{form["user_link"]}">{form["username"]}</a> {form["age"]} років\n{form["about"]}\n\nМої теги: {tags}\n\n{form["sex"]}'
+    await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard(), parse_mode=ParseMode.HTML)
 
     os.remove(f'media/temp/{form["user_id"]}.jpg')
 
@@ -333,8 +420,8 @@ async def process_next_or_cancel_search_by_tag(msg: Message, state: FSMContext):
         get_photo(minio_client, f'media/temp/{form["user_id"]}.jpg', f'{form["user_id"]}.jpg')
 
         tags = ' '.join(tag for tag in form['tags'])
-        text = f'{form["username"]} {form["age"]} років\n{form["about"]}\nМої теги: {tags}\n{form["sex"]}'
-        await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard())
+        text = f'<a href="{form["user_link"]}">{form["username"]}</a> {form["age"]} років\n{form["about"]}\n\nМої теги: {tags}\n\n{form["sex"]}'
+        await msg.answer_photo(photo=FSInputFile(path=f'media/temp/{form["user_id"]}.jpg'), caption=text, reply_markup=search_keyboard(), parse_mode=ParseMode.HTML)
 
         os.remove(f'media/temp/{form["user_id"]}.jpg')
     else:

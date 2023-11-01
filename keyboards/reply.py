@@ -26,6 +26,6 @@ def main() -> ReplyKeyboardMarkup:
 
 def profile_keyboard() -> ReplyKeyboardMarkup:
     kb_client = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text = "Редагувати ім'я"), KeyboardButton(text = "Редагувати вік"), KeyboardButton(text = "Редагувати стать")],
-                                              [KeyboardButton(text = "Редагувати біографію"), KeyboardButton(text = "Редагувати теги"), KeyboardButton(text = "Створити заново")],
-                                              [KeyboardButton(text = "Пошук"), KeyboardButton(text = "Пошук за тегами")]], resize_keyboard=True)
+                                              [KeyboardButton(text = "Редагувати біографію"), KeyboardButton(text = "Редагувати теги"), KeyboardButton(text = "Редагувати фото")],
+                                              [KeyboardButton(text = "Створити заново"), KeyboardButton(text = "Пошук"), KeyboardButton(text = "Пошук за тегами")]], resize_keyboard=True)
     return kb_client
