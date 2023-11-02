@@ -66,11 +66,15 @@ async def profile_handler(msg: Message):
 
     os.remove(f'media/temp/{data["user_id"]}.jpg')
 
-@router.message(lambda msg: msg.text in ["Редагувати ім'я", "Редагувати вік", "Редагувати стать", "Редагувати біографію", "Редагувати теги", "Редагувати фото"])
+@router.message(lambda msg: msg.text in ["Редагувати ім'я", "Редагувати вік", "Редагувати стать", "Редагувати біографію", "Редагувати теги", "Редагувати фото", "Відхилити"])
 async def choose_method_edit_handler(msg: Message, state: FSMContext):
     await state.set_state(EditForm.method)
     await state.update_data(method=msg.text.lower())
     match msg.text.lower():
+        case "відхилити":
+            await state.clear()
+            await msg.answer(text="Редагування відхилено", reply_markup=main())
+            return
         case "редагувати ім'я":
             await msg.answer("Введи своє ім'я", reply_markup=delete_keyboard())
         case "редагувати вік":
@@ -174,18 +178,26 @@ async def edit_data_handler(msg: Message, state: FSMContext):
 
 @router.message(lambda msg: msg.text in ['Розпочати реєстрацію', 'Створити заново'])
 async def start_reg_handler(msg: Message, state: FSMContext):
-    await msg.answer("Щоб припинити заповнення анкети просто напиши відхилити або /cancel")
+    await msg.answer("Щоб припинити заповнення анкети просто напиши відхилити")
     await msg.answer("Введи своє ім'я", reply_markup=delete_keyboard())
     await state.set_state(Form.username)
 
 @router.message(Form.username)
 async def process_name(msg: Message, state: FSMContext):
+    if msg.text.lower() == "відхилити":
+        await state.clear()
+        await msg.answer(text="Створення анкети відхилено", reply_markup=main())
+        return
     await state.update_data(username=msg.text)
     await msg.answer("Тепер введи свій вік")
     await state.set_state(Form.age)
 
 @router.message(Form.age)
 async def process_age(msg: Message, state: FSMContext):
+    if msg.text.lower() == "відхилити":
+        await state.clear()
+        await msg.answer(text="Створення анкети відхилено", reply_markup=main())
+        return
     try:
         if int(msg.text) < 16 or int(msg.text) > 50:
             await msg.answer("Твій вік повинен бути від 16 до 50")
@@ -202,6 +214,10 @@ async def process_age(msg: Message, state: FSMContext):
 
 @router.message(Form.sex)
 async def process_sex(msg: Message, state: FSMContext):
+    if msg.text.lower() == "відхилити":
+        await state.clear()
+        await msg.answer(text="Створення анкети відхилено", reply_markup=main())
+        return
     if msg.text not in ['Чоловік', 'Жінка', 'Інше']:
         await msg.answer("Ви ввели невірну стать, виберіть з запропонованих")
         await msg.answer("Обери свою стать", reply_markup=create_sex_keyboard())
@@ -213,6 +229,10 @@ async def process_sex(msg: Message, state: FSMContext):
 
 @router.message(Form.about)
 async def process_about(msg: Message, state: FSMContext):
+    if msg.text.lower() == "відхилити":
+        await state.clear()
+        await msg.answer(text="Створення анкети відхилено", reply_markup=main())
+        return
     if msg.text.lower() == 'пусто':
         await state.update_data(about='')
     else:
@@ -224,6 +244,10 @@ async def process_about(msg: Message, state: FSMContext):
 
 @router.message(Form.tags)
 async def process_tags(msg: Message, state: FSMContext):
+    if msg.text.lower() == "відхилити":
+        await state.clear()
+        await msg.answer(text="Створення анкети відхилено", reply_markup=main())
+        return
     if msg.text.lower() == 'пусто':
         await state.update_data(tags=[])
     else:
@@ -236,6 +260,10 @@ async def process_tags(msg: Message, state: FSMContext):
 
 @router.message(Form.img_name)
 async def process_img_name(msg: Message, state: FSMContext):
+    if msg.text.lower() == "відхилити":
+        await state.clear()
+        await msg.answer(text="Створення анкети відхилено", reply_markup=main())
+        return
     if msg.content_type != ContentType.PHOTO:
         await msg.answer("Щось не зрозуміле... Надішліть фото для вашої анкети.")
         return
@@ -284,12 +312,6 @@ async def process_change(msg: Message, state: FSMContext):
     else:
         await msg.answer("Щось не зрозуміле...", reply_markup=delete_keyboard())
         return
-
-@router.message(Command('cancel'))
-@router.message(F.text == "Відхилити")
-async def cmd_cancel(msg: Message, state: FSMContext):
-    await state.clear()
-    await msg.answer(text="Створення анкети відхилено", reply_markup=main())
 
 
 
