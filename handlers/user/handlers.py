@@ -260,10 +260,13 @@ async def process_tags(msg: Message, state: FSMContext):
 
 @router.message(Form.img_name)
 async def process_img_name(msg: Message, state: FSMContext):
-    if msg.text.lower() == "відхилити":
-        await state.clear()
-        await msg.answer(text="Створення анкети відхилено", reply_markup=main())
-        return
+    try:
+        if msg.text.lower() == "відхилити":
+            await state.clear()
+            await msg.answer(text="Створення анкети відхилено", reply_markup=main())
+            return
+    except:
+        pass
     if msg.content_type != ContentType.PHOTO:
         await msg.answer("Щось не зрозуміле... Надішліть фото для вашої анкети.")
         return
